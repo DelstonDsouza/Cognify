@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Water Logging Report</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f0f4f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 420px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #0077b6;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin: 10px 0 5px;
+    }
+
+    input[type="file"], 
+    input[type="text"], 
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+
+    button {
+      background: #0077b6;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.3s ease;
+    }
+
+    button:hover {
+      background: #023e8a;
+    }
+
+    #response {
+      text-align: center;
+      font-weight: bold;
+      margin-top: 10px;
+      color: green;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Report Water Logging</h2>
+    <!-- ✅ Actual Form -->
+    <form id="reportForm" enctype="multipart/form-data">
+      <label for="image">Take / Upload Picture:</label>
+      <input type="file" name="image" id="image" accept="image/*" capture="environment" required>
+      
+     <input type="text" name="latitude" id="latitude" placeholder="Auto-detected latitude" required>
+<input type="text" name="longitude" id="longitude" placeholder="Auto-detected longitude" required>
+
+      <button type="submit">Submit Report</button>
+    </form>
+
+    <p id="response"></p>
+  </div>
+
+  <script>
+    // Auto-fill location
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        document.getElementById("latitude").value = pos.coords.latitude;
+        document.getElementById("longitude").value = pos.coords.longitude;
+      }, () => {
+        alert("Location access denied. Please enable location services.");
+      });
+    }
+
+    // Handle form submit
+    document.getElementById("reportForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+
+      const res = await fetch("http://localhost:5000/report", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      document.getElementById("response").innerText = data.message;
+    });
+  </script>
+</body>
+</html>
