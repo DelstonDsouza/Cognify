@@ -1,7 +1,7 @@
-Project Name : Health Rakshak
+Project Name : Seva Saati
+
 Problem Statement ID : PS03HC
+
 Team Name : Cognify
+
 College Name : ST ALOYSIUS UNIVERSITY
-
-
-
