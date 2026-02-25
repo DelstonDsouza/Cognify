@@ -22,10 +22,12 @@ interface CheckIn {
 }
 
 interface Medication {
+  // accepts both localStorage (time) and backend (scheduleTime)
   id: string;
   name: string;
   dosage: string;
-  time: string;
+  time?: string;
+  scheduleTime?: string;
   frequency: string;
   taken: boolean;
 }
@@ -118,13 +120,13 @@ export function CaregiverDashboard() {
   const totalMeds     = medicines.length;
   const missedMeds    = medicines.filter(m => {
     if (m.taken) return false;
-    const [h, min] = m.time.split(":").map(Number);
+    const [h, min] = (m.time || m.scheduleTime || "00:00").split(":").map(Number);
     const t = new Date(); t.setHours(h, min, 0, 0);
     return now > t;
   });
   const upcomingMeds  = medicines.filter(m => {
     if (m.taken) return false;
-    const [h, min] = m.time.split(":").map(Number);
+    const [h, min] = (m.time || m.scheduleTime || "00:00").split(":").map(Number);
     const t = new Date(); t.setHours(h, min, 0, 0);
     return now <= t;
   });
@@ -249,7 +251,7 @@ export function CaregiverDashboard() {
           ) : (
             <div className="space-y-3">
               {medicines.map((med, i) => {
-                const [h, min] = med.time.split(":").map(Number);
+                const [h, min] = (med.time || med.scheduleTime || "00:00").split(":").map(Number);
                 const t = new Date(); t.setHours(h, min, 0, 0);
                 const isOverdue = !med.taken && now > t;
                 const isPending = !med.taken && now <= t;
@@ -265,7 +267,7 @@ export function CaregiverDashboard() {
                   >
                     <div>
                       <p className="text-xl font-bold text-slate-800">{med.name}</p>
-                      <p className="text-base text-slate-500">{med.dosage} · {med.time}</p>
+                      <p className="text-base text-slate-500">{med.dosage} · {med.time || med.scheduleTime}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       {med.taken ? (

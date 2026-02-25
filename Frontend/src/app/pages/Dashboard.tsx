@@ -1,425 +1,304 @@
 import { Link } from "react-router";
 import {
-  Heart,
-  Activity,
-  Pill,
-  Calendar,
-  Phone,
-  AlertCircle,
+  Activity, Pill, Calendar, Phone, AlertCircle,
   Sun,
-  ShieldCheck,
-  ClipboardList,
 } from "lucide-react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
 import {
-  computeCaregiverOverview,
-  computeStabilityScore,
-} from "../../utils/localAnalysis";
+  CheckIn as CheckInApi, Analysis, speak,
+  DEFAULT_USER,
+} from "../../utils/sevaApi";
+import { computeCaregiverOverview } from "../../utils/localAnalysis";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface HealthData {
-  date: string;
-  bloodPressure: number;
-  heartRate: number;
-}
-
-interface CheckIn {
+interface CheckInEntry {
   status: "fine" | "unwell" | "help";
   timestamp: string;
   transcriptText?: string;
 }
 
 interface Overview {
-  stabilityScore: string;
-  stabilityNumber: number;
-  stabilityColor: string;
-  statusSummary: { status: string; at: string | null };
   missedMedicines: { id: string; name: string; scheduleTime: string }[];
-  alerts: { type: string; message: string; severity: string }[];
-  routineDeviations: { type: string; message: string; severity: string }[];
   inactivity: { inactive: boolean; hoursAgo: number | null; message: string };
-  totalAlerts: number;
 }
 
-// ── API helper ────────────────────────────────────────────────────────────────
+// ── localStorage helpers ──────────────────────────────────────────────────────
 
-const API = (import.meta as any).env?.VITE_API_URL || "http://localhost:3000";
-
-async function apiPost(path: string, body: object) {
-  try {
-    const res = await fetch(`${API}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-async function apiGet(path: string) {
-  try {
-    const res = await fetch(`${API}${path}`);
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function loadCheckIns(): CheckIn[] {
+function loadCheckIns(): CheckInEntry[] {
   return JSON.parse(localStorage.getItem("seva_checkins") || "[]");
 }
-
-function saveCheckIn(checkIn: CheckIn) {
-  const existing = loadCheckIns();
-  existing.push(checkIn);
-  localStorage.setItem("seva_checkins", JSON.stringify(existing));
+function saveCheckIn(c: CheckInEntry) {
+  const list = loadCheckIns();
+  list.push(c);
+  localStorage.setItem("seva_checkins", JSON.stringify(list));
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Dashboard() {
-  const [healthData, setHealthData]     = useState<HealthData[]>([]);
-  const [upcomingMeds, setUpcomingMeds] = useState<any[]>([]);
-  const [medicines, setMedicines]       = useState<any[]>([]);
-  const [checkIns, setCheckIns]         = useState<CheckIn[]>([]);
-  const [symptoms, setSymptoms]         = useState<any[]>([]);
-  const [overview, setOverview]         = useState<Overview | null>(null);
-  const [checkingIn, setCheckingIn]     = useState(false);
-  const [lastCheckIn, setLastCheckIn]   = useState<CheckIn | null>(null);
+  const [upcomingMeds,  setUpcomingMeds]  = useState<any[]>([]);
+  const [medicines,     setMedicines]     = useState<any[]>([]);
+  const [checkIns,      setCheckIns]      = useState<CheckInEntry[]>([]);
+  const [symptoms,      setSymptoms]      = useState<any[]>([]);
+  const [overview,      setOverview]      = useState<Overview | null>(null);
+  const [lastCheckIn,   setLastCheckIn]   = useState<CheckInEntry | null>(null);
+  const [checkingIn,    setCheckingIn]    = useState(false);
+  const [inactiveAlert, setInactiveAlert] = useState<string | null>(null);
 
-  // Medications taken/total for summary
-  const takenCount    = upcomingMeds.filter((m: any) => m.taken).length;
-  const totalMedCount = upcomingMeds.length;
+  // Use ALL medicines for summary counts (not just upcoming)
+  const takenCount    = medicines.filter((m: any) => m.taken).length;
+  const totalMedCount = medicines.length;
 
-  // ── Load on mount ────────────────────────────────────────────────────────
+  // ── Load on mount ─────────────────────────────────────────────────────────
   useEffect(() => {
-    // Mock health chart data
-    setHealthData([
-      { date: "Mon", bloodPressure: 120, heartRate: 72 },
-      { date: "Tue", bloodPressure: 118, heartRate: 70 },
-      { date: "Wed", bloodPressure: 122, heartRate: 74 },
-      { date: "Thu", bloodPressure: 119, heartRate: 71 },
-      { date: "Fri", bloodPressure: 121, heartRate: 73 },
-      { date: "Sat", bloodPressure: 117, heartRate: 69 },
-      { date: "Sun", bloodPressure: 120, heartRate: 72 },
-    ]);
-
-    // Load upcoming meds from localStorage
     const stored = localStorage.getItem("medications");
     if (stored) {
       const meds = JSON.parse(stored);
       const now  = new Date();
       const upcoming = meds
         .filter((med: any) => {
-          const [hours, minutes] = med.time.split(":");
-          const medTime = new Date();
-          medTime.setHours(parseInt(hours), parseInt(minutes), 0);
-          return medTime > now;
+          const [h, m] = med.time.split(":");
+          const t = new Date();
+          t.setHours(parseInt(h), parseInt(m), 0);
+          return t > now;
         })
-        .slice(0, 3);
+        .slice(0, 5);
       setUpcomingMeds(upcoming);
       setMedicines(meds);
     }
 
-    // Load check-ins from localStorage
     const ci = loadCheckIns();
     setCheckIns(ci);
-    if (ci.length > 0) {
-      setLastCheckIn(ci[ci.length - 1]);
-    }
+    if (ci.length > 0) setLastCheckIn(ci[ci.length - 1]);
 
-    // Fetch symptoms from backend
-    apiGet("/api/symptoms?userId=user_001").then((data) => {
-      if (data?.symptoms) setSymptoms(data.symptoms);
-    });
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    fetch(`${apiUrl}/api/symptoms?userId=${DEFAULT_USER}`)
+      .then(r => r.json())
+      .then(d => { if (d?.symptoms) setSymptoms(d.symptoms); })
+      .catch(() => {});
+
+    // Inactivity polling every 10 min
+    const checkInactivity = async () => {
+      const data = await Analysis.inactivity(DEFAULT_USER);
+      if (data?.inactive) {
+        setInactiveAlert(data.message || "⚠️ No activity detected. Are you okay?");
+        speak("Hello! I noticed you haven't been active. Are you feeling okay?");
+      } else {
+        setInactiveAlert(null);
+      }
+    };
+    checkInactivity();
+    const timer = setInterval(checkInactivity, 10 * 60 * 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  // ── Recompute overview when data changes ──────────────────────────────────
   useEffect(() => {
     const result = computeCaregiverOverview(medicines, checkIns, symptoms);
-    setOverview(result as Overview);
+    setOverview(result as any);
   }, [medicines, checkIns, symptoms]);
 
-  // ── Morning Check-In (text fallback — no voice needed) ───────────────────
-  const handleCheckIn = async (feeling: "fine" | "unwell" | "help") => {
+  // ── Text check-in ─────────────────────────────────────────────────────────
+  const handleCheckIn = async (feeling: "fine" | "unwell") => {
     setCheckingIn(true);
-
-    const transcriptMap = {
+    const textMap = {
       fine:   "I am feeling fine today",
       unwell: "I am not feeling well today",
-      help:   "I need help please",
     };
-
-    const result = await apiPost("/api/morning-checkin", {
-      userId:         "user_001",
-      transcriptText: transcriptMap[feeling],
-    });
-
-    const newCheckIn: CheckIn = {
+    const result = await CheckInApi.morning(textMap[feeling], DEFAULT_USER);
+    const entry: CheckInEntry = {
       status:         result?.status || feeling,
       timestamp:      new Date().toISOString(),
-      transcriptText: transcriptMap[feeling],
+      transcriptText: textMap[feeling],
     };
-
-    saveCheckIn(newCheckIn);
-    const updated = loadCheckIns();
-    setCheckIns(updated);
-    setLastCheckIn(newCheckIn);
+    saveCheckIn(entry);
+    setCheckIns(loadCheckIns());
+    setLastCheckIn(entry);
+    if (result?.ttsReply) speak(result.ttsReply);
     setCheckingIn(false);
+    toast.success("Check-in recorded!");
   };
 
   // ── Quick Actions ─────────────────────────────────────────────────────────
   const quickActions = [
-    { title: "Emergency SOS",      icon: Phone,     link: "/emergency",    color: "bg-red-500 hover:bg-red-600",       textColor: "text-white" },
-    { title: "Log Health Data",    icon: Activity,  link: "/health",       color: "bg-green-500 hover:bg-green-600",   textColor: "text-white" },
-    { title: "Take Medication",    icon: Pill,       link: "/medications",  color: "bg-purple-500 hover:bg-purple-600", textColor: "text-white" },
-    { title: "View Appointments",  icon: Calendar,  link: "/appointments", color: "bg-blue-500 hover:bg-blue-600",     textColor: "text-white" },
+    { title: "Emergency\nSOS",   icon: Phone,    link: "/emergency",    color: "bg-red-500 hover:bg-red-600"       },
+    { title: "Log Health\nData", icon: Activity, link: "/health",       color: "bg-green-500 hover:bg-green-600"   },
+    { title: "My\nMedications",  icon: Pill,     link: "/medications",  color: "bg-purple-500 hover:bg-purple-600" },
+    { title: "Appointments",     icon: Calendar, link: "/appointments", color: "bg-blue-500 hover:bg-blue-600"     },
   ];
 
-  // ── Stability color helper ────────────────────────────────────────────────
-  const stabilityBg = overview?.stabilityScore === "Stable"
-    ? "bg-green-100 text-green-800 border-green-300"
-    : overview?.stabilityScore === "Slightly Irregular"
-    ? "bg-orange-100 text-orange-800 border-orange-300"
-    : "bg-red-100 text-red-800 border-red-300";
-
-  // ── JSX ───────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-12">
 
       {/* Header */}
       <div>
-        <h2 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-2">
-          Welcome Back!
-        </h2>
-        <p className="text-xl text-gray-600">
+        <h2 className="text-6xl font-bold text-gray-800 mb-3">Welcome Back! 👋</h2>
+        <p className="text-3xl text-gray-500">
           {new Date().toLocaleDateString("en-US", {
             weekday: "long", year: "numeric", month: "long", day: "numeric",
           })}
         </p>
       </div>
 
-      {/* ── MORNING CHECK-IN CARD ── */}
-      <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-yellow-400">
-        <h3 className="text-2xl font-bold text-gray-800 mb-1 flex items-center gap-2">
-          <Sun className="w-7 h-7 text-yellow-400" />
+      {/* Inactivity Alert Banner */}
+      {inactiveAlert && (
+        <div className="bg-red-50 border-2 border-red-400 rounded-2xl p-8 flex items-center gap-5">
+          <span className="text-5xl">⚠️</span>
+          <p className="text-3xl font-bold text-red-700 flex-1">{inactiveAlert}</p>
+          <button
+            onClick={() => setInactiveAlert(null)}
+            className="text-red-400 hover:text-red-600 text-4xl font-bold"
+          >✕</button>
+        </div>
+      )}
+
+      {/* ── Morning Check-In ── */}
+      <div className="bg-white rounded-2xl shadow-lg p-10 border-l-8 border-yellow-400">
+        <h3 className="text-4xl font-bold text-gray-800 mb-4 flex items-center gap-3">
+          <Sun className="w-12 h-12 text-yellow-400" />
           Morning Check-In
         </h3>
 
         {lastCheckIn ? (
-          <div className="mt-3">
-            <p className="text-lg text-gray-600 mb-1">
+          <div className="mt-2 mb-8">
+            <p className="text-2xl text-gray-500 mb-4">
               Last check-in:{" "}
-              <span className="font-semibold">
+              <span className="font-bold text-gray-700">
                 {new Date(lastCheckIn.timestamp).toLocaleString()}
               </span>
             </p>
-            <span className={`inline-block px-4 py-1 rounded-full text-lg font-bold ${
-              lastCheckIn.status === "fine"   ? "bg-green-100 text-green-700" :
-              lastCheckIn.status === "help"   ? "bg-red-100 text-red-700"    :
-                                                "bg-orange-100 text-orange-700"
+            <span className={`inline-block px-8 py-3 rounded-full text-2xl font-bold ${
+              lastCheckIn.status === "fine"
+                ? "bg-green-100 text-green-700"
+                : "bg-orange-100 text-orange-700"
             }`}>
-              {lastCheckIn.status === "fine"   ? "✅ Feeling Fine" :
-               lastCheckIn.status === "help"   ? "🚨 Needs Help"  :
-                                                 "⚠️ Not Well"}
+              {lastCheckIn.status === "fine" ? "✅ Feeling Fine" : "⚠️ Not Feeling Well"}
             </span>
-            <p className="text-base text-gray-500 mt-3 mb-2">Update your status:</p>
+            <p className="text-2xl text-gray-500 mt-6 mb-2">Update your status:</p>
           </div>
         ) : (
-          <p className="text-lg text-gray-500 mt-2 mb-3">
-            How are you feeling today?
-          </p>
+          <p className="text-3xl text-gray-500 mt-3 mb-8">How are you feeling today?</p>
         )}
 
-        <div className="flex flex-wrap gap-3 mt-2">
+        {/* I'm Fine / Not Well buttons */}
+        <div className="flex flex-wrap gap-5">
           <button
             onClick={() => handleCheckIn("fine")}
             disabled={checkingIn}
-            className="px-5 py-2 bg-green-500 text-white rounded-lg text-lg font-semibold hover:bg-green-600 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[200px] px-8 py-8 bg-green-500 text-white rounded-2xl text-3xl font-bold hover:bg-green-600 transition-colors disabled:opacity-50 shadow-md"
           >
             😊 I'm Fine
           </button>
           <button
             onClick={() => handleCheckIn("unwell")}
             disabled={checkingIn}
-            className="px-5 py-2 bg-orange-500 text-white rounded-lg text-lg font-semibold hover:bg-orange-600 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[200px] px-8 py-8 bg-orange-500 text-white rounded-2xl text-3xl font-bold hover:bg-orange-600 transition-colors disabled:opacity-50 shadow-md"
           >
-            😟 Not Well
-          </button>
-          <button
-            onClick={() => handleCheckIn("help")}
-            disabled={checkingIn}
-            className="px-5 py-2 bg-red-500 text-white rounded-lg text-lg font-semibold hover:bg-red-600 transition-colors disabled:opacity-50"
-          >
-            🆘 Need Help
+            😟 Not Feeling Well
           </button>
         </div>
       </div>
 
-      {/* ── STABILITY SCORE + ALERTS ROW ── */}
-      {overview && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* ── Upcoming Medications ── */}
+      <div className="bg-white rounded-2xl shadow-lg p-10 border-l-8 border-purple-400">
+        <h3 className="text-4xl font-bold text-gray-800 mb-8 flex items-center gap-3">
+          <Pill className="w-12 h-12 text-purple-500" />
+          Upcoming Medications
+        </h3>
 
-          {/* Stability Score */}
-          <div className={`rounded-xl shadow-lg p-5 border-2 ${stabilityBg}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <ShieldCheck className="w-6 h-6" />
-              <h3 className="text-xl font-bold">Independence Score</h3>
-            </div>
-            <p className="text-5xl font-bold mt-2">{overview.stabilityNumber}</p>
-            <p className="text-2xl font-semibold mt-1">{overview.stabilityScore}</p>
-          </div>
-
-          {/* Alerts */}
-          <div className="bg-white rounded-xl shadow-lg p-5 border-2 border-gray-100">
-            <div className="flex items-center gap-2 mb-3">
-              <ClipboardList className="w-6 h-6 text-gray-600" />
-              <h3 className="text-xl font-bold text-gray-800">
-                Active Alerts ({overview.totalAlerts})
-              </h3>
-            </div>
-            {overview.alerts.length === 0 ? (
-              <p className="text-lg text-green-600 font-semibold">✅ No alerts — all good!</p>
-            ) : (
-              <div className="space-y-2 max-h-36 overflow-y-auto">
-                {overview.alerts.map((a, i) => (
-                  <div key={i} className={`text-base px-3 py-2 rounded-lg font-medium ${
-                    a.severity === "critical" ? "bg-red-100 text-red-700"    :
-                    a.severity === "high"     ? "bg-orange-100 text-orange-700" :
-                                               "bg-yellow-100 text-yellow-700"
-                  }`}>
-                    {a.severity === "critical" ? "🚨" : a.severity === "high" ? "⚠️" : "📋"} {a.message}
-                  </div>
-                ))}
+        {upcomingMeds.length > 0 ? (
+          <div className="space-y-5">
+            {upcomingMeds.map((med: any, i: number) => (
+              <div
+                key={i}
+                className="flex items-center justify-between p-8 bg-purple-50 rounded-2xl border border-purple-100"
+              >
+                <div>
+                  <p className="text-3xl font-bold text-gray-800">{med.name}</p>
+                  <p className="text-2xl text-gray-500 mt-2">{med.dosage}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-4xl font-bold text-purple-600">{med.time}</p>
+                  <p className="text-xl text-gray-400 mt-2">{med.frequency || "Daily"}</p>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── ROUTINE DEVIATIONS ── */}
-      {overview && overview.routineDeviations.length > 0 && (
-        <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5">
-          <h3 className="text-xl font-bold text-orange-800 mb-3">
-            ⚠️ Routine Deviations Detected
-          </h3>
-          <div className="space-y-2">
-            {overview.routineDeviations.map((d, i) => (
-              <p key={i} className="text-base text-orange-700 font-medium">
-                • {d.message}
-              </p>
             ))}
+            <Link
+              to="/medications"
+              className="block text-center text-purple-600 hover:text-purple-700 font-bold text-3xl mt-5 py-5 border-2 border-purple-300 rounded-2xl hover:bg-purple-50 transition-colors"
+            >
+              View All Medications →
+            </Link>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="text-center py-16">
+            <AlertCircle className="w-28 h-28 text-gray-300 mx-auto mb-6" />
+            <p className="text-3xl text-gray-500 mb-8">No upcoming medications scheduled</p>
+            <Link
+              to="/medications"
+              className="inline-block px-10 py-6 bg-purple-500 text-white rounded-2xl text-3xl font-bold hover:bg-purple-600 transition-colors"
+            >
+              Add Medications
+            </Link>
+          </div>
+        )}
+      </div>
 
-      {/* Quick Actions — your original, unchanged */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── Quick Actions ── */}
+      <div className="grid grid-cols-2 gap-6">
         {quickActions.map((action) => {
           const Icon = action.icon;
           return (
             <Link
               key={action.title}
               to={action.link}
-              className={`${action.color} ${action.textColor} p-6 rounded-xl shadow-lg transition-transform hover:scale-105`}
+              className={`${action.color} text-white p-9 rounded-2xl shadow-lg transition-transform hover:scale-105 flex flex-col items-start`}
             >
-              <Icon className="w-10 h-10 mb-3" />
-              <h3 className="text-xl font-semibold">{action.title}</h3>
+              <Icon className="w-14 h-14 mb-5" />
+              <h3 className="text-3xl font-bold leading-snug whitespace-pre-line">
+                {action.title}
+              </h3>
             </Link>
           );
         })}
       </div>
 
-      {/* Health Overview — your original, unchanged */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* ── Today's Summary ── */}
+      {(() => {
+        const now = new Date();
+        const missedCount = medicines.filter((m: any) => {
+          if (m.taken) return false;
+          const [h, min] = m.time.split(":").map(Number);
+          const medTime = new Date();
+          medTime.setHours(h, min, 0, 0);
+          return now > medTime;
+        }).length;
 
-        {/* Health Trends Chart */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Heart className="w-7 h-7 text-red-500" />
-            Weekly Health Trends
-          </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={healthData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" style={{ fontSize: "14px" }} />
-              <YAxis style={{ fontSize: "14px" }} />
-              <Tooltip contentStyle={{ fontSize: "16px", padding: "10px" }} />
-              <Line type="monotone" dataKey="bloodPressure" stroke="#3b82f6" strokeWidth={3} name="Blood Pressure" />
-              <Line type="monotone" dataKey="heartRate"     stroke="#ef4444" strokeWidth={3} name="Heart Rate" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Upcoming Medications */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Pill className="w-7 h-7 text-purple-500" />
-            Upcoming Medications
-          </h3>
-          {upcomingMeds.length > 0 ? (
-            <div className="space-y-3">
-              {upcomingMeds.map((med, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
-                  <div>
-                    <p className="text-lg font-semibold text-gray-800">{med.name}</p>
-                    <p className="text-gray-600">{med.dosage}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xl font-bold text-purple-600">{med.time}</p>
-                  </div>
-                </div>
-              ))}
-              <Link to="/medications" className="block text-center text-blue-600 hover:text-blue-700 font-semibold text-lg mt-4">
-                View All Medications →
-              </Link>
+        return (
+        <div className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-2xl shadow-lg p-10">
+          <h3 className="text-4xl font-bold mb-8">📋 Today's Summary</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-8">
+              <p className="text-2xl opacity-90 mb-3">Medications Taken</p>
+              <p className="text-6xl font-bold">{takenCount}/{totalMedCount}</p>
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <AlertCircle className="w-16 h-16 text-gray-300 mx-auto mb-3" />
-              <p className="text-lg text-gray-500 mb-4">No medications scheduled</p>
-              <Link to="/medications" className="inline-block px-6 py-3 bg-purple-500 text-white rounded-lg text-lg font-semibold hover:bg-purple-600 transition-colors">
-                Add Medications
-              </Link>
+            <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-8">
+              <p className="text-2xl opacity-90 mb-3">Missed Medicines</p>
+              <p className="text-6xl font-bold">{missedCount}</p>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Today's Summary — your original + real medicine count */}
-      <div className="bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-xl shadow-lg p-6">
-        <h3 className="text-2xl font-bold mb-4">Today's Summary</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4">
-            <p className="text-lg opacity-90">Medications Taken</p>
-            <p className="text-4xl font-bold">{takenCount}/{totalMedCount}</p>
-          </div>
-          <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4">
-            <p className="text-lg opacity-90">Missed Medicines</p>
-            <p className="text-4xl font-bold">{overview?.missedMedicines.length ?? 0}</p>
-          </div>
-          <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4">
-            <p className="text-lg opacity-90">Inactivity Status</p>
-            <p className="text-2xl font-bold">
-              {overview?.inactivity.inactive ? "⚠️ Inactive" : "✅ Active"}
-            </p>
+            <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-8">
+              <p className="text-2xl opacity-90 mb-3">Activity Status</p>
+              <p className="text-4xl font-bold mt-2">
+                {overview?.inactivity.inactive ? "⚠️ Inactive" : "✅ Active"}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+        );
+      })()}
 
     </div>
   );
