@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Pill, Plus, Trash2, Clock, Check } from "lucide-react";
 import { toast } from "sonner";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 interface Medication {
   id: string;
   name: string;
@@ -11,9 +13,39 @@ interface Medication {
   taken: boolean;
 }
 
+// ── API helper (calls your backend) ──────────────────────────────────────────
+
+const API = (import.meta as any).env?.VITE_API_URL || "http://localhost:3000";
+
+async function apiPost(path: string, body: object) {
+  try {
+    const res = await fetch(`${API}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return await res.json();
+  } catch {
+    // Backend unreachable — silently fail, localStorage still works
+    return null;
+  }
+}
+
+async function apiGet(path: string) {
+  try {
+    const res = await fetch(`${API}${path}`);
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function Medications() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [adherence, setAdherence]     = useState<{ adherenceScore: number; label: string } | null>(null);
   const [newMed, setNewMed] = useState({
     name: "",
     dosage: "",
@@ -21,19 +53,25 @@ export function Medications() {
     frequency: "daily",
   });
 
+  // ── Load on mount ──────────────────────────────────────────────────────────
   useEffect(() => {
     const stored = localStorage.getItem("medications");
-    if (stored) {
-      setMedications(JSON.parse(stored));
-    }
+    if (stored) setMedications(JSON.parse(stored));
+
+    // Fetch adherence score from backend
+    apiGet("/api/medicines/adherence?userId=user_001").then(data => {
+      if (data) setAdherence(data);
+    });
   }, []);
 
+  // ── Save helpers ───────────────────────────────────────────────────────────
   const saveMedications = (meds: Medication[]) => {
     localStorage.setItem("medications", JSON.stringify(meds));
     setMedications(meds);
   };
 
-  const addMedication = (e: React.FormEvent) => {
+  // ── Add medication ─────────────────────────────────────────────────────────
+  const addMedication = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMed.name || !newMed.dosage || !newMed.time) {
       toast.error("Please fill in all fields");
@@ -47,29 +85,60 @@ export function Medications() {
     };
 
     saveMedications([...medications, medication]);
+
+    // Sync to backend
+    await apiPost("/api/medicines", {
+      userId:       "user_001",
+      name:         newMed.name,
+      dosage:       newMed.dosage,
+      scheduleTime: newMed.time,
+    });
+
+    // Refresh adherence
+    apiGet("/api/medicines/adherence?userId=user_001").then(data => {
+      if (data) setAdherence(data);
+    });
+
     setNewMed({ name: "", dosage: "", time: "", frequency: "daily" });
     setShowAddForm(false);
     toast.success("Medication added successfully!");
   };
 
+  // ── Delete medication ──────────────────────────────────────────────────────
   const deleteMedication = (id: string) => {
     saveMedications(medications.filter((med) => med.id !== id));
     toast.success("Medication removed");
   };
 
-  const toggleTaken = (id: string) => {
+  // ── Toggle taken ───────────────────────────────────────────────────────────
+  const toggleTaken = async (id: string) => {
     const updated = medications.map((med) =>
       med.id === id ? { ...med, taken: !med.taken } : med
     );
     saveMedications(updated);
+
     const med = updated.find((m) => m.id === id);
+
     if (med?.taken) {
       toast.success(`Marked ${med.name} as taken`);
+      // Sync taken to backend
+      await apiPost(`/api/medicines/${id}/taken`, {});
+    } else {
+      // Sync skipped to backend
+      await apiPost(`/api/medicines/${id}/skipped`, {});
     }
+
+    // Refresh adherence score
+    apiGet("/api/medicines/adherence?userId=user_001").then(data => {
+      if (data) setAdherence(data);
+    });
   };
 
+  // ── JSX ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
+
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-3xl sm:text-4xl font-bold text-gray-800 flex items-center gap-3">
           <Pill className="w-10 h-10 text-purple-500" />
@@ -83,6 +152,22 @@ export function Medications() {
           Add Medication
         </button>
       </div>
+
+      {/* Adherence Score Banner — shows when backend data is available */}
+      {adherence && (
+        <div className={`rounded-xl p-4 text-center shadow-md ${
+          adherence.adherenceScore >= 80
+            ? "bg-green-100 text-green-800"
+            : adherence.adherenceScore >= 50
+            ? "bg-orange-100 text-orange-800"
+            : "bg-red-100 text-red-800"
+        }`}>
+          <p className="text-xl font-bold">
+            Weekly Adherence: {adherence.adherenceScore}% —{" "}
+            <span className="font-semibold">{adherence.label}</span>
+          </p>
+        </div>
+      )}
 
       {/* Add Medication Form */}
       {showAddForm && (
@@ -110,9 +195,7 @@ export function Medications() {
               <input
                 type="text"
                 value={newMed.dosage}
-                onChange={(e) =>
-                  setNewMed({ ...newMed, dosage: e.target.value })
-                }
+                onChange={(e) => setNewMed({ ...newMed, dosage: e.target.value })}
                 className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
                 placeholder="e.g., 100mg"
               />
@@ -134,9 +217,7 @@ export function Medications() {
               </label>
               <select
                 value={newMed.frequency}
-                onChange={(e) =>
-                  setNewMed({ ...newMed, frequency: e.target.value })
-                }
+                onChange={(e) => setNewMed({ ...newMed, frequency: e.target.value })}
                 className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
               >
                 <option value="daily">Daily</option>
@@ -169,9 +250,7 @@ export function Medications() {
         {medications.length === 0 ? (
           <div className="bg-white rounded-xl shadow-lg p-12 text-center">
             <Pill className="w-20 h-20 text-gray-300 mx-auto mb-4" />
-            <p className="text-xl text-gray-500 mb-4">
-              No medications added yet
-            </p>
+            <p className="text-xl text-gray-500 mb-4">No medications added yet</p>
             <button
               onClick={() => setShowAddForm(true)}
               className="px-6 py-3 bg-purple-500 text-white rounded-lg text-lg font-semibold hover:bg-purple-600 transition-colors"
@@ -201,8 +280,7 @@ export function Medications() {
                       <span className="font-semibold">Time:</span> {med.time}
                     </p>
                     <p className="text-lg text-gray-600">
-                      <span className="font-semibold">Frequency:</span>{" "}
-                      {med.frequency}
+                      <span className="font-semibold">Frequency:</span> {med.frequency}
                     </p>
                   </div>
                 </div>

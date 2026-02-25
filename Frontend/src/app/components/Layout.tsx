@@ -21,6 +21,7 @@ export function Layout() {
     { path: "/appointments", label: "Appointments", icon: Calendar },
     { path: "/activities", label: "Activities", icon: Heart },
     { path: "/emergency", label: "Emergency", icon: Phone },
+    { path: "/caregiver", label: "Caregiver", icon: Menu },
   ];
 
   return (

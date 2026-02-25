@@ -6,6 +6,7 @@ import { Appointments } from "./pages/Appointments";
 import { EmergencyContacts } from "./pages/EmergencyContacts";
 import { Activities } from "./pages/Activities";
 import { Layout } from "./components/Layout";
+import { CaregiverDashboard } from "./pages/CaregiverDashboard";
 
 export const router = createBrowserRouter([
   {
@@ -18,6 +19,7 @@ export const router = createBrowserRouter([
       { path: "appointments", Component: Appointments },
       { path: "emergency", Component: EmergencyContacts },
       { path: "activities", Component: Activities },
+      { path: "/caregiver", element: <CaregiverDashboard /> }
     ],
   },
 ]);
