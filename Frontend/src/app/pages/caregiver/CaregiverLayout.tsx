@@ -6,29 +6,28 @@ import {
 } from "lucide-react";
 
 interface CaregiverSession {
-  name: string;
+  fullName: string;
   username: string;
   loginAt: string;
 }
 
 const navItems = [
-  { path: "/caregiver-portal/dashboard",   label: "Overview",    icon: LayoutDashboard },
-  { path: "/caregiver-portal/medications", label: "Medications", icon: Pill            },
-  { path: "/caregiver-portal/vitals",      label: "Health Vitals", icon: Activity       },
-  { path: "/caregiver-portal/checkins",    label: "Check-ins",   icon: ClipboardList   },
+  { path: "/caregiver-portal/dashboard",   label: "Overview",      icon: LayoutDashboard },
+  { path: "/caregiver-portal/medications", label: "Medications",   icon: Pill            },
+  { path: "/caregiver-portal/vitals",      label: "Health Vitals", icon: Activity        },
+  { path: "/caregiver-portal/checkins",    label: "Check-ins",     icon: ClipboardList   },
 ];
 
 export function CaregiverLayout() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [session, setSession] = useState<CaregiverSession | null>(null);
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const [session, setSession]     = useState<CaregiverSession | null>(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  // ── Auth guard ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const stored = localStorage.getItem("caregiver_session");
     if (!stored) {
-      navigate("/caregiver-login", { replace: true });
+      navigate("/login", { replace: true }); // ← fixed: was /caregiver-login
       return;
     }
     setSession(JSON.parse(stored));
@@ -36,12 +35,11 @@ export function CaregiverLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem("caregiver_session");
-    navigate("/caregiver-login", { replace: true });
+    navigate("/login", { replace: true }); // ← fixed: was /caregiver-login
   };
 
   const handleRefresh = () => {
     setLastRefresh(new Date());
-    // Dispatch a custom event that child pages can listen to
     window.dispatchEvent(new CustomEvent("caregiver-refresh"));
   };
 
@@ -66,14 +64,16 @@ export function CaregiverLayout() {
           </div>
         </div>
 
-        {/* Logged-in caregiver */}
+        {/* Logged-in caregiver info */}
         <div className="px-6 py-5 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 bg-teal-500/20 border border-teal-400/40 rounded-full flex items-center justify-center">
               <User className="w-5 h-5 text-teal-400" />
             </div>
             <div>
-              <p className="text-white text-base font-semibold">{session.name}</p>
+              <p className="text-white text-base font-semibold">
+                {session.fullName || session.username}
+              </p>
               <p className="text-white/40 text-sm">
                 Since {new Date(session.loginAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </p>
@@ -84,12 +84,10 @@ export function CaregiverLayout() {
         {/* Nav */}
         <nav className="flex-1 px-4 py-6 space-y-1">
           {navItems.map(item => {
-            const Icon = item.icon;
+            const Icon   = item.icon;
             const active = location.pathname === item.path;
             return (
-              <NavLink
-                key={item.path}
-                to={item.path}
+              <NavLink key={item.path} to={item.path}
                 className={`flex items-center gap-3 px-4 py-4 rounded-xl text-lg font-semibold transition-all ${
                   active
                     ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
@@ -106,8 +104,7 @@ export function CaregiverLayout() {
 
         {/* Bottom actions */}
         <div className="p-5 border-t border-white/10 space-y-2">
-          <button
-            onClick={handleRefresh}
+          <button onClick={handleRefresh}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all text-lg font-semibold"
           >
             <RefreshCw className="w-5 h-5" />
@@ -116,15 +113,15 @@ export function CaregiverLayout() {
               {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           </button>
-          <button
-            onClick={handleLogout}
+
+          <button onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400/70 hover:text-red-300 hover:bg-red-500/10 transition-all text-lg font-semibold"
           >
             <LogOut className="w-5 h-5" />
             <span>Logout</span>
           </button>
-          <a
-            href="/"
+
+          <a href="/dashboard"
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/30 hover:text-white/60 transition-all text-base"
           >
             ← Patient App

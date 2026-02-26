@@ -1,4 +1,7 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+import { Login } from "./pages/Login";
 
 // ── Elder / Patient app ───────────────────────────────────────────────────────
 import { Layout }            from "./components/Layout";
@@ -10,8 +13,7 @@ import { EmergencyContacts } from "./pages/EmergencyContacts";
 import { Activities }        from "./pages/Activities";
 import { RegisterCaregiver } from "./pages/RegisterCaregiver";
 
-// ── Caregiver portal (completely separate URL space) ──────────────────────────
-import { CaregiverLogin }       from "./pages/caregiver/CaregiverLogin";
+// ── Caregiver portal ──────────────────────────────────────────────────────────
 import { CaregiverLayout }      from "./pages/caregiver/CaregiverLayout";
 import { CaregiverDashboard }   from "./pages/caregiver/CaregiverDashboard";
 import { CaregiverMedications } from "./pages/caregiver/CaregiverMedications";
@@ -20,39 +22,36 @@ import { CaregiverCheckIns }    from "./pages/caregiver/CaregiverCheckIns";
 
 export const router = createBrowserRouter([
 
-  // ── Elder app — has sidebar, "Caregiver" menu = REGISTER ONLY ──────────────
+  // ── Login ─────────────────────────────────────────────────────────────────
+  { path: "/",             Component: Login },
+  { path: "/login",        Component: Login },
+  { path: "/caregiver-login", element: <Navigate to="/login" replace /> },
+
+  // ── Elder app — ALL under /dashboard ─────────────────────────────────────
   {
-    path: "/",
+    path: "/dashboard",
     Component: Layout,
     children: [
-      { index: true,          Component: Dashboard        },
-      { path: "medications",  Component: Medications       },
-      { path: "health",       Component: HealthVitals      },
-      { path: "appointments", Component: Appointments      },
-      { path: "emergency",    Component: EmergencyContacts },
-      { path: "activities",   Component: Activities        },
-      { path: "caregiver",    Component: RegisterCaregiver }, // ← register only
+      { index: true,                Component: Dashboard        },
+      { path: "medications",        Component: Medications       },
+      { path: "health",             Component: HealthVitals      },
+      { path: "appointments",       Component: Appointments      },
+      { path: "emergency",          Component: EmergencyContacts },
+      { path: "activities",         Component: Activities        },
+      { path: "caregiver",          Component: RegisterCaregiver },
     ],
   },
 
-  // ── Caregiver login — standalone, NO elder sidebar ─────────────────────────
-  //    Caregiver visits this URL directly to sign in
-  {
-    path: "/caregiver-login",
-    Component: CaregiverLogin,
-  },
-
-  // ── Caregiver portal — own layout, auth-guarded ────────────────────────────
-  //    Only accessible after logging in at /caregiver-login
+  // ── Caregiver portal ──────────────────────────────────────────────────────
   {
     path: "/caregiver-portal",
     Component: CaregiverLayout,
     children: [
-      { index: true,           Component: CaregiverDashboard   },
-      { path: "dashboard",     Component: CaregiverDashboard   },
-      { path: "medications",   Component: CaregiverMedications },
-      { path: "vitals",        Component: CaregiverVitals      },
-      { path: "checkins",      Component: CaregiverCheckIns    },
+      { index: true,         Component: CaregiverDashboard   },
+      { path: "dashboard",   Component: CaregiverDashboard   },
+      { path: "medications", Component: CaregiverMedications },
+      { path: "vitals",      Component: CaregiverVitals      },
+      { path: "checkins",    Component: CaregiverCheckIns    },
     ],
   },
 ]);

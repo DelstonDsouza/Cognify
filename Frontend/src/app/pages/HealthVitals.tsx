@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Activity, Heart, Droplet, Plus, TrendingUp,
-  Mic, AlertTriangle, Loader2,
+  Activity, Heart, Droplet, Plus, TrendingUp, AlertTriangle,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -9,38 +8,20 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
-// FIX: correct path — pages are in src/app/pages/, utils in src/app/utils/
-import { Symptoms, runVoiceSymptomLog, DEFAULT_USER } from "../../utils/sevaApi";
-import { useVoice } from "../../utils/useVoice";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 interface VitalReading {
   id: string; date: string;
   bloodPressureSystolic: number; bloodPressureDiastolic: number;
   heartRate: number; bloodSugar: number; weight: number;
 }
 
-interface Symptom {
-  id: string; timestamp: string; transcriptText: string; critical: boolean;
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
-
 export function HealthVitals() {
-  const [readings,       setReadings]       = useState<VitalReading[]>([]);
-  const [showAddForm,    setShowAddForm]     = useState(false);
-  const [symptoms,       setSymptoms]       = useState<Symptom[]>([]);
-  const [symptomText,    setSymptomText]    = useState("");
-  const [loggingSymptom, setLoggingSymptom] = useState(false);
-  const [newReading, setNewReading] = useState({
+  const [readings,    setReadings]    = useState<VitalReading[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newReading,  setNewReading]  = useState({
     bloodPressureSystolic: "", bloodPressureDiastolic: "",
     heartRate: "", bloodSugar: "", weight: "",
   });
 
-  const voice = useVoice();
-
-  // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const stored = localStorage.getItem("healthVitals");
     if (stored) {
@@ -54,13 +35,8 @@ export function HealthVitals() {
       setReadings(sample);
       localStorage.setItem("healthVitals", JSON.stringify(sample));
     }
-
-    Symptoms.getAll(DEFAULT_USER).then((data: any) => {
-      if (data?.symptoms) setSymptoms(data.symptoms);
-    });
   }, []);
 
-  // ── Vitals ────────────────────────────────────────────────────────────────
   const saveReadings = (r: VitalReading[]) => {
     localStorage.setItem("healthVitals", JSON.stringify(r));
     setReadings(r);
@@ -83,44 +59,6 @@ export function HealthVitals() {
     toast.success("Health vitals recorded!");
   };
 
-  // ── Text symptom ──────────────────────────────────────────────────────────
-  const handleLogSymptom = async () => {
-    if (!symptomText.trim()) { toast.error("Please describe your symptom first"); return; }
-    setLoggingSymptom(true);
-
-    const result: any = await Symptoms.log(symptomText.trim(), DEFAULT_USER);
-
-    if (result) {
-      if (result.critical) toast.error("⚠️ Critical symptom detected! Caregiver has been alerted.");
-      else                 toast.success("Symptom logged!");
-      Symptoms.getAll(DEFAULT_USER).then((d: any) => { if (d?.symptoms) setSymptoms(d.symptoms); });
-    } else {
-      const local: Symptom = {
-        id: Date.now().toString(), timestamp: new Date().toISOString(),
-        transcriptText: symptomText.trim(), critical: false,
-      };
-      setSymptoms(prev => [local, ...prev]);
-      toast.success("Symptom saved locally.");
-    }
-
-    setSymptomText("");
-    setLoggingSymptom(false);
-  };
-
-  // ── Voice symptom ─────────────────────────────────────────────────────────
-  const handleVoiceSymptom = async () => {
-    voice.reset();
-    const result: any = await runVoiceSymptomLog(DEFAULT_USER);
-    if (!result) {
-      toast.error("Could not log symptom. Please type it instead.");
-      return;
-    }
-    if (result.critical) toast.error("🚨 Critical symptom detected! Caregiver alerted.");
-    else                 toast.success("Symptom logged via voice!");
-    Symptoms.getAll(DEFAULT_USER).then((d: any) => { if (d?.symptoms) setSymptoms(d.symptoms); });
-  };
-
-  // ── Chart ─────────────────────────────────────────────────────────────────
   const chartData = readings.slice(-7).map((r: VitalReading) => ({
     date:          new Date(r.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     "BP Systolic": r.bloodPressureSystolic,
@@ -146,15 +84,13 @@ export function HealthVitals() {
         <h2 className="text-3xl sm:text-4xl font-bold text-gray-800 flex items-center gap-3">
           <Activity className="w-10 h-10 text-green-500" /> Health Vitals
         </h2>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="px-6 py-3 bg-green-500 text-white rounded-lg text-lg font-semibold hover:bg-green-600 transition-colors flex items-center gap-2 shadow-lg"
-        >
+        <button onClick={() => setShowAddForm(!showAddForm)}
+          className="px-6 py-3 bg-green-500 text-white rounded-lg text-lg font-semibold hover:bg-green-600 transition-colors flex items-center gap-2 shadow-lg">
           <Plus className="w-6 h-6" /> Log Vitals
         </button>
       </div>
 
-      {/* Add Reading Form */}
+      {/* Add Form */}
       {showAddForm && (
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h3 className="text-2xl font-bold text-gray-800 mb-4">Log Health Vitals</h3>
@@ -163,13 +99,8 @@ export function HealthVitals() {
               {formFields.map(f => (
                 <div key={f.key}>
                   <label className="block text-lg font-semibold text-gray-700 mb-2">{f.label}</label>
-                  <input
-                    type="number"
-                    step={f.step}
-                    value={(newReading as any)[f.key]}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setNewReading({ ...newReading, [f.key]: e.target.value })
-                    }
+                  <input type="number" step={f.step} value={(newReading as any)[f.key]}
+                    onChange={(e) => setNewReading({ ...newReading, [f.key]: e.target.value })}
                     className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
                     placeholder={f.placeholder}
                   />
@@ -177,14 +108,8 @@ export function HealthVitals() {
               ))}
             </div>
             <div className="flex gap-3">
-              <button type="submit"
-                className="flex-1 px-6 py-3 bg-green-500 text-white rounded-lg text-lg font-semibold hover:bg-green-600">
-                Save Reading
-              </button>
-              <button type="button" onClick={() => setShowAddForm(false)}
-                className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg text-lg font-semibold hover:bg-gray-300">
-                Cancel
-              </button>
+              <button type="submit" className="flex-1 px-6 py-3 bg-green-500 text-white rounded-lg text-lg font-semibold hover:bg-green-600">Save Reading</button>
+              <button type="button" onClick={() => setShowAddForm(false)} className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg text-lg font-semibold hover:bg-gray-300">Cancel</button>
             </div>
           </form>
         </div>
@@ -209,7 +134,7 @@ export function HealthVitals() {
         </div>
       )}
 
-      {/* Charts */}
+      {/* Chart */}
       {chartData.length > 0 && (
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h3 className="text-2xl font-bold text-gray-800 mb-4">Health Trends (Last 7 Days)</h3>
@@ -230,7 +155,9 @@ export function HealthVitals() {
 
       {/* Recent Readings */}
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-2xl font-bold text-gray-800 mb-4">Recent Readings</h3>
+        <h3 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+          <AlertTriangle className="w-7 h-7 text-orange-500" /> Recent Readings
+        </h3>
         <div className="space-y-3">
           {readings.slice(-5).reverse().map((r: VitalReading) => (
             <div key={r.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 p-4 bg-gray-50 rounded-lg">
@@ -238,9 +165,7 @@ export function HealthVitals() {
                 <p className="text-lg font-semibold text-gray-800">
                   {new Date(r.date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
                 </p>
-                <p className="text-gray-600">
-                  {new Date(r.date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                </p>
+                <p className="text-gray-600">{new Date(r.date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}</p>
               </div>
               <div className="grid grid-cols-2 sm:flex gap-4 text-center">
                 <div><p className="text-sm text-gray-600">BP</p>     <p className="text-lg font-semibold">{r.bloodPressureSystolic}/{r.bloodPressureDiastolic}</p></div>
@@ -252,86 +177,6 @@ export function HealthVitals() {
           ))}
         </div>
       </div>
-
-      {/* Symptom Logger */}
-      <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-400">
-        <h3 className="text-2xl font-bold text-gray-800 mb-2 flex items-center gap-2">
-          <Mic className="w-7 h-7 text-green-500" /> Log a Symptom
-        </h3>
-        <p className="text-gray-500 mb-4">
-          Describe how you're feeling — this will alert your caregiver if serious.
-        </p>
-
-        {/* Voice button */}
-        <button
-          onClick={handleVoiceSymptom}
-          disabled={voice.isListening || loggingSymptom}
-          className="mb-4 px-6 py-3 bg-indigo-500 text-white rounded-xl text-lg font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-50 flex items-center gap-2"
-        >
-          {voice.isListening
-            ? <><Loader2 className="w-5 h-5 animate-spin" /> Listening…</>
-            : <><Mic className="w-5 h-5" /> Speak Symptom</>
-          }
-        </button>
-
-        {voice.transcript && (
-          <p className="mb-3 text-sm text-gray-500 italic">You said: "{voice.transcript}"</p>
-        )}
-        {voice.error && (
-          <p className="mb-3 text-sm text-red-500">{voice.error}</p>
-        )}
-
-        {/* Text fallback */}
-        <div className="flex gap-3">
-          <input
-            type="text"
-            value={symptomText}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSymptomText(e.target.value)}
-            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && handleLogSymptom()}
-            placeholder="e.g. I have a headache and feel dizzy..."
-            className="flex-1 px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
-          />
-          <button
-            onClick={handleLogSymptom}
-            disabled={loggingSymptom || voice.isListening}
-            className="px-6 py-3 bg-green-500 text-white rounded-lg text-lg font-semibold hover:bg-green-600 disabled:opacity-50 flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            {loggingSymptom ? "Saving…" : "Log"}
-          </button>
-        </div>
-      </div>
-
-      {/* Symptom History */}
-      {symptoms.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <AlertTriangle className="w-7 h-7 text-orange-500" /> Symptom History
-          </h3>
-          <div className="space-y-3">
-            {symptoms.slice(0, 5).map((s: Symptom) => (
-              <div key={s.id} className={`p-4 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 ${
-                s.critical ? "bg-red-50 border-l-4 border-red-500" : "bg-gray-50 border-l-4 border-gray-300"
-              }`}>
-                <div>
-                  <p className="text-lg font-medium text-gray-800">{s.transcriptText}</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {new Date(s.timestamp).toLocaleString("en-US", {
-                      weekday: "short", month: "short", day: "numeric",
-                      hour: "2-digit", minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-                {s.critical && (
-                  <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-bold whitespace-nowrap">
-                    🚨 Critical
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
     </div>
   );

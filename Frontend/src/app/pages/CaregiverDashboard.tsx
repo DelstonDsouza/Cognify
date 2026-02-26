@@ -4,7 +4,7 @@ import {
   AlertTriangle, Activity, Heart, TrendingUp, User,
   CheckCircle, XCircle, Calendar,
 } from "lucide-react";
-import { computeCaregiverOverview } from "../../../utils/localAnalysis";
+import { computeCaregiverOverview } from "../../utils/localAnalysis";
 
 const API = (import.meta as any).env?.VITE_API_URL || "http://localhost:5000";
 
