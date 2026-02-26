@@ -159,17 +159,17 @@ export function Dashboard() {
       <div className="bg-white rounded-2xl shadow-lg p-10 border-l-8 border-yellow-400">
         <h3 className="text-4xl font-bold text-gray-800 mb-4 flex items-center gap-3">
           <Sun className="w-12 h-12 text-yellow-400" />
-          Morning Check-In
+          Daily Check-In
         </h3>
 
         {lastCheckIn ? (
           <div className="mt-2 mb-8">
-            <p className="text-2xl text-gray-500 mb-4">
+        {/*    <p className="text-2xl text-gray-500 mb-4">
               Last check-in:{" "}
               <span className="font-bold text-gray-700">
                 {new Date(lastCheckIn.timestamp).toLocaleString()}
               </span>
-            </p>
+            </p>*/}
             <span className={`inline-block px-8 py-3 rounded-full text-2xl font-bold ${
               lastCheckIn.status === "fine"
                 ? "bg-green-100 text-green-700"

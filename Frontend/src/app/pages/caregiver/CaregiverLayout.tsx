@@ -12,10 +12,10 @@ interface CaregiverSession {
 }
 
 const navItems = [
-  { path: "/caregiver/dashboard",   label: "Overview",    icon: LayoutDashboard },
-  { path: "/caregiver/medications", label: "Medications", icon: Pill            },
-  { path: "/caregiver/vitals",      label: "Health Vitals", icon: Activity       },
-  { path: "/caregiver/checkins",    label: "Check-ins",   icon: ClipboardList   },
+  { path: "/caregiver-portal/dashboard",   label: "Overview",    icon: LayoutDashboard },
+  { path: "/caregiver-portal/medications", label: "Medications", icon: Pill            },
+  { path: "/caregiver-portal/vitals",      label: "Health Vitals", icon: Activity       },
+  { path: "/caregiver-portal/checkins",    label: "Check-ins",   icon: ClipboardList   },
 ];
 
 export function CaregiverLayout() {
@@ -26,17 +26,17 @@ export function CaregiverLayout() {
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    const stored = sessionStorage.getItem("caregiver_auth");
+    const stored = localStorage.getItem("caregiver_session");
     if (!stored) {
-      navigate("/caregiver/login", { replace: true });
+      navigate("/caregiver-login", { replace: true });
       return;
     }
     setSession(JSON.parse(stored));
   }, [navigate]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem("caregiver_auth");
-    navigate("/caregiver/login", { replace: true });
+    localStorage.removeItem("caregiver_session");
+    navigate("/caregiver-login", { replace: true });
   };
 
   const handleRefresh = () => {
